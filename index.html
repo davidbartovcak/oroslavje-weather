@@ -550,7 +550,8 @@
   // from a page hosted elsewhere — that's enforced by the browser, not something
   // a retry or a different request can work around. Instead, a scheduled GitHub
   // Actions job (.github/workflows/station-history.yml) scrapes both stations
-  // server-side every 15 min, where CORS doesn't apply, and commits the result
+  // server-side every ~30 min (best-effort — GitHub's own scheduler doesn't
+  // reliably hit sub-hourly cadences), where CORS doesn't apply, and commits the result
   // as station-history-<location>.json. This page fetches those files from
   // raw.githubusercontent.com, which does send permissive CORS headers for a
   // public repo — so this works regardless of where index.html itself is hosted.
@@ -641,7 +642,7 @@
   var histRefreshIcon = document.getElementById("histRefreshIcon");
 
   var STATION_JSON_BASE = "https://raw.githubusercontent.com/davidbartovcak/oroslavje-weather/main/";
-  var STATION_STALE_MS = 40 * 60 * 1000; // the Actions job runs every 15 min — call it stuck past ~40 min of silence
+  var STATION_STALE_MS = 90 * 60 * 1000; // the Actions job targets every 30 min — call it stuck past ~90 min of silence
   var histLoadToken = 0; // guards a stale response landing after a location switch
 
   function loadStationHistory(){
@@ -668,7 +669,7 @@
           histStatusText.textContent = "Auto-update job looks stuck — last snapshot from " + ageTxt + ". Check the workflow on GitHub.";
         } else {
           histDot.className = "dot";
-          histStatusText.textContent = "Auto-updated every ~15 min · snapshot from " + ageTxt;
+          histStatusText.textContent = "Auto-updated every ~30 min · snapshot from " + ageTxt;
         }
       })
       .catch(function(err){
@@ -686,7 +687,7 @@
       });
   }
   histRefreshBtn.addEventListener("click", loadStationHistory);
-  setInterval(function(){ loadStationHistory(); }, 15 * 60 * 1000);
+  setInterval(function(){ loadStationHistory(); }, 30 * 60 * 1000);
 
   // ---------- Location switcher ----------
   function switchLocation(locId){

@@ -2,7 +2,11 @@ name: Update station history
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # GitHub's own scheduler is unreliable for sub-hourly cron: in practice,
+    # a */15 schedule fired once in over 5 hours instead of every 15 min.
+    # */30 doesn't guarantee better adherence, but is worth trying before
+    # reaching for an external trigger.
+    - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
 permissions:
