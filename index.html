@@ -686,8 +686,63 @@
         histRefreshIcon.classList.remove("spin");
       });
   }
-  histRefreshBtn.addEventListener("click", loadStationHistory);
   setInterval(function(){ loadStationHistory(); }, 30 * 60 * 1000);
+
+  // The Refresh button tries a genuinely live pull first, routed through a
+  // public CORS proxy — pljusak.com still sends no CORS headers, so a direct
+  // browser fetch fails the same way it always has; the proxy fetches it
+  // server-side on our behalf, only for this one on-demand click, not on a
+  // schedule (a public proxy isn't something to hammer with background
+  // polling). If the proxy is down or blocked, this falls back to whatever
+  // the Actions job last committed, then to the bundled snapshot — same
+  // fallback chain loadStationHistory() already uses.
+  function extractStationJson(html){
+    function extract(varName){
+      var m = html.match(new RegExp("var " + varName + "\\s*=\\s*(\\[[\\s\\S]*?\\]);"));
+      if(!m) throw new Error("couldn't find " + varName + " in page");
+      return JSON.parse(m[1]);
+    }
+    return {
+      t: extract("temperature_24h"),
+      p: extract("tlakovi_24h"),
+      r: extract("oborine_24h"),
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  function refreshStationHistoryNow(){
+    var loc = currentLoc;
+    var token = ++histLoadToken;
+    histRefreshBtn.disabled = true;
+    histRefreshIcon.classList.add("spin");
+    histDot.className = "dot";
+    histStatusText.textContent = "Trying a live fetch via proxy…";
+
+    var target = "https://pljusak.com/meteo.php?stanica=" + loc.pljusakStation;
+    var proxied = "https://api.allorigins.win/raw?url=" + encodeURIComponent(target);
+
+    fetch(proxied)
+      .then(function(res){
+        if(!res.ok) throw new Error("proxy HTTP " + res.status);
+        return res.text();
+      })
+      .then(function(html){
+        if(token !== histLoadToken) return;
+        var data = extractStationJson(html);
+        histData.t = data.t; histData.p = data.p; histData.r = data.r;
+        renderHistChart();
+        histDot.className = "dot";
+        histStatusText.textContent = "Live (via proxy) · just now";
+        histRefreshBtn.disabled = false;
+        histRefreshIcon.classList.remove("spin");
+      })
+      .catch(function(err){
+        if(token !== histLoadToken) return;
+        console.warn("Live proxy fetch failed, falling back to last committed snapshot:", err.message);
+        loadStationHistory(); // falls back through the JSON-snapshot / bootstrap chain
+      });
+  }
+  histRefreshBtn.addEventListener("click", refreshStationHistoryNow);
 
   // ---------- Location switcher ----------
   function switchLocation(locId){
