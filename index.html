@@ -183,8 +183,8 @@
             <button class="tab-btn" data-ch="WV">Water vapour</button>
           </div>
           <div class="tabs" id="satRegionTabs">
-            <button class="tab-btn" data-region="EUR" data-res="MR">Europe</button>
-            <button class="tab-btn active" data-region="ITN" data-res="MR">N. Italy / Adriatic</button>
+            <button class="tab-btn" data-region="EUR">Europe</button>
+            <button class="tab-btn active" data-region="ITN">N. Italy / Adriatic</button>
           </div>
           <div class="media-box" id="satBox">
             <img id="satImg" alt="Meteosat imagery over Europe">
@@ -277,11 +277,17 @@
         if(typeof inst.air_temperature === "number") d.temps.push(inst.air_temperature);
         if(typeof inst.wind_speed === "number") d.winds.push(inst.wind_speed);
       }
+      var n1 = entry.data.next_1_hours;
       var n6 = entry.data.next_6_hours;
-      if(n6){
-        if(n6.details && typeof n6.details.precipitation_amount === "number") d.precip += n6.details.precipitation_amount;
-        if(n6.summary && n6.summary.symbol_code) d.symbols.push({ hour: localHour(entry.time), code: n6.summary.symbol_code });
+      // next_1_hours entries are hourly and non-overlapping, so prefer them.
+      // next_6_hours entries overlap hour-by-hour (each covers the following 6h),
+      // so only count them at 6h-aligned boundaries once next_1_hours runs out (~2.5 days ahead).
+      if(n1 && n1.details && typeof n1.details.precipitation_amount === "number"){
+        d.precip += n1.details.precipitation_amount;
+      } else if(n6 && n6.details && typeof n6.details.precipitation_amount === "number" && new Date(entry.time).getUTCHours() % 6 === 0){
+        d.precip += n6.details.precipitation_amount;
       }
+      if(n6 && n6.summary && n6.summary.symbol_code) d.symbols.push({ hour: localHour(entry.time), code: n6.summary.symbol_code });
     });
     var keys = Object.keys(days).sort();
     var todayKey = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
@@ -371,7 +377,8 @@
   var satImg = document.getElementById("satImg");
   var satFallback = document.getElementById("satFallback");
   var satStamp = document.getElementById("satStamp");
-  var satState = { ch:"VIS", region:"ITN", res:"MR" };
+  var satState = { ch:"VIS", region:"ITN" };
+  var SAT_RES = { VIS:"HR", IR:"MR", WV:"MR" }; // OSMER serves VIS at higher resolution than IR/WV
   var satFallbackText = document.getElementById("satFallbackText");
   var NO_FRAME_MSG = {
     VIS: "No visible-light frame available right now — this channel only has imagery during daylight hours.",
@@ -394,7 +401,7 @@
       return;
     }
     var dt = candidates[idx];
-    var url = osmerUrl(ch, region, satState.res, dt);
+    var url = osmerUrl(ch, region, SAT_RES[ch] || "MR", dt);
     var probe = new Image();
     probe.onload = function(){
       if(satState.ch !== ch || satState.region !== region) return;
@@ -424,7 +431,7 @@
   document.getElementById("satRegionTabs").addEventListener("click", function(e){
     var btn = e.target.closest(".tab-btn"); if(!btn) return;
     this.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.remove("active"); });
-    btn.classList.add("active"); satState.region = btn.dataset.region; satState.res = btn.dataset.res; loadSat();
+    btn.classList.add("active"); satState.region = btn.dataset.region; loadSat();
   });
   loadSat();
   setInterval(loadSat, 10 * 60 * 1000);
