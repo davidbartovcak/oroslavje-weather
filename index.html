@@ -161,7 +161,7 @@
             </div>
           </div>
           <div class="media-meta">
-            <span id="radarStamp">Requesting latest frame…</span>
+            <span id="radarStamp">Requesting animated loop…</span>
             <button class="icon-btn" id="radarRefresh">↻ Refresh</button>
           </div>
         </div>
@@ -194,8 +194,11 @@
             </div>
           </div>
           <div class="media-meta">
-            <span id="satStamp">Locating latest pass…</span>
-            <button class="icon-btn" id="satRefresh">↻ Refresh</button>
+            <span id="satStamp">Locating latest passes…</span>
+            <div style="display:flex; gap:8px;">
+              <button class="icon-btn" id="satPlayToggle">⏸ Pause</button>
+              <button class="icon-btn" id="satRefresh">↻ Refresh</button>
+            </div>
           </div>
         </div>
       </section>
@@ -360,14 +363,17 @@
   setInterval(loadForecast, 30 * 60 * 1000);
 
   // ---------- Radar (ARSO) ----------
+  // ARSO publishes a pre-built animated GIF loop (last couple hours of frames)
+  // at this URL, alongside the single-frame "si0-rm.gif" used before — the
+  // browser's native GIF decoder handles the looping, no extra JS needed.
   var radarImg = document.getElementById("radarImg");
   var radarFallback = document.getElementById("radarFallback");
   var radarStamp = document.getElementById("radarStamp");
   function loadRadar(){
     radarFallback.classList.remove("show");
-    radarImg.onload = function(){ radarStamp.textContent = "Loaded " + new Date().toLocaleTimeString("en-GB"); };
+    radarImg.onload = function(){ radarStamp.textContent = "Loop refreshed " + new Date().toLocaleTimeString("en-GB"); };
     radarImg.onerror = function(){ radarFallback.classList.add("show"); radarStamp.textContent = "Unavailable"; };
-    radarImg.src = "https://meteo.arso.gov.si/uploads/probase/www/observ/radar/si0-rm.gif?t=" + Date.now();
+    radarImg.src = "https://meteo.arso.gov.si/uploads/probase/www/observ/radar/si0-rm-anim.gif?t=" + Date.now();
   }
   document.getElementById("radarRefresh").addEventListener("click", loadRadar);
   loadRadar();
@@ -392,35 +398,101 @@
     var ymd = ""+y+m+d, stamp = ymd+hh+mm;
     return "https://www.osmer.fvg.it/sat/img/"+ch+"/"+y+"/"+ymd+"/"+stamp+"-"+ch+"-"+region+"-"+res+"-M.jpg";
   }
-  function tryLoadSat(candidates, idx, ch, region){
-    if(idx >= candidates.length){
-      satImg.removeAttribute("src");
-      satFallbackText.textContent = NO_FRAME_MSG[ch] || "No recent frame found.";
-      satFallback.classList.add("show");
-      satStamp.textContent = "No recent frame found";
-      return;
-    }
-    var dt = candidates[idx];
-    var url = osmerUrl(ch, region, SAT_RES[ch] || "MR", dt);
-    var probe = new Image();
-    probe.onload = function(){
-      if(satState.ch !== ch || satState.region !== region) return;
-      satFallback.classList.remove("show");
-      satImg.src = url;
-      satStamp.textContent = dt.toUTCString().slice(0,22) + " UTC";
-    };
-    probe.onerror = function(){ tryLoadSat(candidates, idx+1, ch, region); };
-    probe.src = url;
+
+  // OSMER doesn't publish a ready-made loop like ARSO's radar does, so this
+  // builds one client-side: probe a window of 15-min-aligned timestamps
+  // (OSMER's own cadence), keep whichever ones actually exist, and flip
+  // through the most recent SAT_FRAME_COUNT of them like a flipbook.
+  var SAT_FRAME_COUNT = 10;      // frames kept for the loop
+  var SAT_CANDIDATE_COUNT = 24;  // timestamps probed (6h of 15-min slots — headroom for gaps)
+  var SAT_STEP_MS = 15 * 60000;
+  var SAT_PLAY_MS = 400;         // ms per frame while animating
+  var SAT_HOLD_MS = 1200;        // extra pause on the newest frame before looping
+
+  var satFrames = [];   // [{url, dt}], oldest -> newest
+  var satFrameIdx = 0;
+  var satTimer = null;
+  var satPlaying = false;
+  var satPlayBtn = document.getElementById("satPlayToggle");
+  var satLoadToken = 0; // guards against a stale async batch landing after a channel/region switch
+
+  function probeFrame(ch, region, res, dt){
+    return new Promise(function(resolve){
+      var url = osmerUrl(ch, region, res, dt);
+      var probe = new Image();
+      probe.onload = function(){ resolve({ url: url, dt: dt }); };
+      probe.onerror = function(){ resolve(null); };
+      probe.src = url;
+    });
   }
-  function loadSat(){
-    var ch = satState.ch, region = satState.region;
-    satStamp.textContent = "Locating latest pass…";
-    satFallback.classList.remove("show");
+
+  function collectFrames(ch, region){
+    var res = SAT_RES[ch] || "MR";
     var now = new Date(); now.setUTCSeconds(0,0);
     var minute = now.getUTCMinutes(); now.setUTCMinutes(minute - (minute % 15));
     var candidates = [];
-    for(var i=0; i<20; i++) candidates.push(new Date(now.getTime() - i*15*60000));
-    tryLoadSat(candidates, 0, ch, region);
+    for(var i=0; i<SAT_CANDIDATE_COUNT; i++) candidates.push(new Date(now.getTime() - i*SAT_STEP_MS));
+    return Promise.all(candidates.map(function(dt){ return probeFrame(ch, region, res, dt); }))
+      .then(function(results){
+        return results.filter(Boolean)
+          .sort(function(a,b){ return a.dt - b.dt; })
+          .slice(-SAT_FRAME_COUNT);
+      });
+  }
+
+  function showFrame(idx){
+    var f = satFrames[idx];
+    satImg.src = f.url;
+    satStamp.textContent = f.dt.toUTCString().slice(0,22) + " UTC · frame " + (idx+1) + "/" + satFrames.length;
+  }
+  function scheduleNext(){
+    var hold = (satFrameIdx === satFrames.length - 1) ? SAT_HOLD_MS : SAT_PLAY_MS;
+    satTimer = setTimeout(function(){
+      satFrameIdx = (satFrameIdx + 1) % satFrames.length;
+      showFrame(satFrameIdx);
+      if(satPlaying) scheduleNext();
+    }, hold);
+  }
+  function stopAnimation(){
+    if(satTimer){ clearTimeout(satTimer); satTimer = null; }
+    satPlaying = false;
+    satPlayBtn.textContent = "▶ Play";
+  }
+  function startAnimation(){
+    if(satTimer) clearTimeout(satTimer);
+    satPlaying = true;
+    satPlayBtn.textContent = "⏸ Pause";
+    scheduleNext();
+  }
+  satPlayBtn.addEventListener("click", function(){
+    if(!satFrames.length) return;
+    if(satPlaying) stopAnimation(); else startAnimation();
+  });
+
+  function loadSat(){
+    var ch = satState.ch, region = satState.region;
+    var token = ++satLoadToken;
+    if(satTimer){ clearTimeout(satTimer); satTimer = null; }
+    satPlaying = false;
+    satStamp.textContent = "Building animation…";
+    satFallback.classList.remove("show");
+    collectFrames(ch, region).then(function(frames){
+      if(token !== satLoadToken) return; // channel/region changed mid-flight; a newer call owns the UI now
+      if(!frames.length){
+        satFrames = [];
+        satImg.removeAttribute("src");
+        satFallbackText.textContent = NO_FRAME_MSG[ch] || "No recent frame found.";
+        satFallback.classList.add("show");
+        satStamp.textContent = "No recent frame found";
+        return;
+      }
+      satFrames = frames;
+      satFrameIdx = satFrames.length - 1;
+      showFrame(satFrameIdx);
+      var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if(reduceMotion){ satPlaying = false; satPlayBtn.textContent = "▶ Play"; }
+      else { startAnimation(); }
+    });
   }
   document.getElementById("satRefresh").addEventListener("click", loadSat);
   document.getElementById("satChannelTabs").addEventListener("click", function(e){
