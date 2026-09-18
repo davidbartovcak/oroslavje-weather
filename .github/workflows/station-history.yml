@@ -22,16 +22,25 @@ jobs:
         with:
           node-version: 20
 
-      - run: node scripts/fetch-station-history.js
+      - name: Fetch station data
+        id: fetch
+        run: node scripts/fetch-station-history.js
+        continue-on-error: true
 
-      - name: Commit and push if changed
+      - name: Commit and push whatever succeeded
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add station-history.json
+          for f in station-history-oroslavje.json station-history-opatija.json; do
+            [ -f "$f" ] && git add "$f"
+          done
           if git diff --cached --quiet; then
-            echo "No change in station-history.json — skipping commit"
+            echo "No change in station history files — skipping commit"
           else
-            git commit -m "Update station history snapshot"
+            git commit -m "Update station history snapshots"
             git push
           fi
+
+      - name: Fail the run if any station fetch failed
+        if: steps.fetch.outcome == 'failure'
+        run: exit 1

@@ -114,8 +114,8 @@
 
   <header class="top">
     <div class="place">
-      <h1>Oroslavje</h1>
-      <div class="coords mono">45.9963°N&nbsp; 15.8981°E&nbsp; · &nbsp;180 m&nbsp; · &nbsp;Krapina‑Zagorje, Croatia</div>
+      <h1 id="placeName">Oroslavje</h1>
+      <div class="coords mono" id="placeCoords">45.9963°N&nbsp; 15.8981°E&nbsp; · &nbsp;180 m&nbsp; · &nbsp;Krapina‑Zagorje, Croatia</div>
     </div>
     <div class="now">
       <div class="clock">
@@ -125,6 +125,11 @@
     </div>
   </header>
 
+  <div class="tabs" id="locationTabs" style="margin-bottom:18px;">
+    <button class="tab-btn active" data-loc="oroslavje">Oroslavje</button>
+    <button class="tab-btn" data-loc="opatija">Opatija</button>
+  </div>
+
   <div class="grid">
     <div style="display:flex; flex-direction:column; gap:18px;">
 
@@ -133,7 +138,7 @@
           <h2>10‑day forecast</h2>
           <div class="actions">
             <button class="icon-btn" id="fcRefresh"><span id="fcRefreshIcon">↻</span> Refresh</button>
-            <a class="src-link" href="https://www.yr.no/en/forecast/daily-table/2-3193962/Croatia/Krapina-Zagorje%20County/Town%20of%20Oroslavje/Oroslavje" target="_blank" rel="noopener">yr.no ↗</a>
+            <a class="src-link" id="yrLink" href="https://www.yr.no/en/forecast/daily-table/2-3193962/Croatia/Krapina-Zagorje%20County/Town%20of%20Oroslavje/Oroslavje" target="_blank" rel="noopener">yr.no ↗</a>
           </div>
         </div>
         <div class="body">
@@ -208,7 +213,7 @@
           <h2>24h station history</h2>
           <div class="actions">
             <button class="icon-btn" id="histRefresh"><span id="histRefreshIcon">↻</span> Refresh</button>
-            <a class="src-link" href="https://pljusak.com/meteo.php?stanica=sudigo" target="_blank" rel="noopener">pljusak.com ↗</a>
+            <a class="src-link" id="pljusakHeadLink" href="https://pljusak.com/meteo.php?stanica=sudigo" target="_blank" rel="noopener">pljusak.com ↗</a>
           </div>
         </div>
         <div class="body">
@@ -218,10 +223,10 @@
             <button class="tab-btn" data-metric="r">Precipitation</button>
           </div>
           <svg id="histChart" viewBox="0 0 600 190" style="width:100%; height:auto; display:block;"></svg>
-          <div class="fc-status" id="histStatus"><span class="dot" id="histDot"></span><span id="histStatusText">Showing a snapshot pulled 17 Sep, 21:47 CEST</span></div>
-          <div class="asof">Station: Zabok, Šudigo (nearest public station to Oroslavje, ~9 km SE) · current reading below refreshes on its own · full interactive chart on pljusak.com ↗</div>
+          <div class="fc-status" id="histStatus"><span class="dot" id="histDot"></span><span id="histStatusText">Loading…</span></div>
+          <div class="asof">Station: <span id="stationDesc">Zabok, Šudigo (nearest public station to Oroslavje, ~9 km SE)</span> · current reading below refreshes on its own · full interactive chart on <a id="pljusakChartLink" href="https://pljusak.com/meteo.php?stanica=sudigo" target="_blank" rel="noopener">pljusak.com ↗</a></div>
           <div class="station-frame-wrap" style="margin-top:12px;">
-            <iframe id="stationFrame" src="https://pljusak.com/sticker150.php?stanica=sudigo" title="Zabok–Šudigo live conditions" loading="lazy"></iframe>
+            <iframe id="stationFrame" src="https://pljusak.com/sticker150.php?stanica=sudigo" title="Live station conditions" loading="lazy"></iframe>
           </div>
         </div>
       </section>
@@ -233,14 +238,41 @@
     Forecast pulled live from <a href="https://api.met.no/weatherapi/locationforecast/2.0/compact" target="_blank" rel="noopener">api.met.no</a> (the data behind yr.no) ·
     radar from <a href="https://meteo.arso.gov.si/met/sl/weather/observ/radar/" target="_blank" rel="noopener">ARSO</a> ·
     satellite from <a href="https://www.osmer.fvg.it/satellite.php?ln=" target="_blank" rel="noopener">ARPA FVG / OSMER</a> ·
-    station history from <a href="https://pljusak.com/meteo.php?stanica=sudigo" target="_blank" rel="noopener">pljusak.com</a> (Zabok–Šudigo).
+    station history from <a href="https://pljusak.com" target="_blank" rel="noopener">pljusak.com</a> (nearest public station per location).
     This is a static file — host it yourself (your own web server, GitHub Pages, or just open it locally) so it can reach these sites directly from your browser.
   </footer>
 </div>
 
 <script>
 (function(){
-  var LAT = 45.9962843, LON = 15.898121, ALT = 180, TZ = "Europe/Zagreb";
+  var TZ = "Europe/Zagreb"; // both locations are in Croatia, same timezone
+
+  // Radar and satellite are regional maps that already cover both places at
+  // once, so they stay shared panels — only the forecast and station history
+  // are actually per-location.
+  var LOCATIONS = {
+    oroslavje: {
+      id: "oroslavje",
+      label: "Oroslavje",
+      coordsHtml: "45.9963°N&nbsp; 15.8981°E&nbsp; · &nbsp;180 m&nbsp; · &nbsp;Krapina‑Zagorje, Croatia",
+      lat: 45.9962843, lon: 15.898121, alt: 180,
+      yrUrl: "https://www.yr.no/en/forecast/daily-table/2-3193962/Croatia/Krapina-Zagorje%20County/Town%20of%20Oroslavje/Oroslavje",
+      pljusakStation: "sudigo",
+      stationDesc: "Zabok, Šudigo (nearest public station to Oroslavje, ~9 km SE)",
+      historyFile: "station-history-oroslavje.json"
+    },
+    opatija: {
+      id: "opatija",
+      label: "Opatija",
+      coordsHtml: "45.3354°N&nbsp; 14.3091°E&nbsp; · &nbsp;13 m&nbsp; · &nbsp;Primorje‑Gorski Kotar, Croatia",
+      lat: 45.3354, lon: 14.3091, alt: 13,
+      yrUrl: "https://www.yr.no/en/search?q=Opatija%2C%20Croatia",
+      pljusakStation: "dhmz_opatija",
+      stationDesc: "DHMZ Opatija station",
+      historyFile: "station-history-opatija.json"
+    }
+  };
+  var currentLoc = null; // set by the switchLocation("oroslavje") bootstrap call at the bottom of this script
 
   // ---------- Clock ----------
   function tickClock(){
@@ -330,6 +362,7 @@
   var fcStatusText = document.getElementById("fcStatusText");
   var fcRefreshBtn = document.getElementById("fcRefresh");
   var fcRefreshIcon = document.getElementById("fcRefreshIcon");
+  var fcLoadToken = 0; // guards a stale response landing after a location switch
 
   function setStatus(mode, text){
     fcDot.className = "dot" + (mode === "err" ? " err" : mode === "stale" ? " stale" : "");
@@ -337,30 +370,34 @@
   }
 
   function loadForecast(){
+    var loc = currentLoc;
+    var token = ++fcLoadToken;
     fcRefreshBtn.disabled = true;
     fcRefreshIcon.classList.add("spin");
     setStatus("ok", "Fetching live forecast from api.met.no…");
-    fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat="+LAT+"&lon="+LON+"&altitude="+ALT)
+    fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat="+loc.lat+"&lon="+loc.lon+"&altitude="+loc.alt)
       .then(function(res){
         if(!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
       .then(function(json){
+        if(token !== fcLoadToken) return; // a newer location switch owns the UI now
         var rows = buildForecastRows(json.properties.timeseries);
         renderForecast(rows);
         setStatus("ok", "Live · updated " + new Date().toLocaleTimeString("en-GB", { timeZone: TZ }));
       })
       .catch(function(err){
+        if(token !== fcLoadToken) return;
         setStatus("err", "Couldn't reach api.met.no (" + err.message + ") — showing last loaded data. Try Refresh, or open yr.no directly.");
       })
       .finally(function(){
+        if(token !== fcLoadToken) return;
         fcRefreshBtn.disabled = false;
         fcRefreshIcon.classList.remove("spin");
       });
   }
   fcRefreshBtn.addEventListener("click", loadForecast);
-  loadForecast();
-  setInterval(loadForecast, 30 * 60 * 1000);
+  setInterval(function(){ loadForecast(); }, 30 * 60 * 1000);
 
   // ---------- Radar (ARSO) ----------
   // ARSO publishes a pre-built animated GIF loop (last couple hours of frames)
@@ -508,22 +545,28 @@
   loadSat();
   setInterval(loadSat, 10 * 60 * 1000);
 
-  // ---------- 24h station history (Zabok–Šudigo) ----------
+  // ---------- 24h station history (per location) ----------
   // pljusak.com sends no CORS headers, so a browser can never fetch it directly
   // from a page hosted elsewhere — that's enforced by the browser, not something
   // a retry or a different request can work around. Instead, a scheduled GitHub
-  // Actions job (.github/workflows/station-history.yml) scrapes it server-side
-  // every 15 min, where CORS doesn't apply, and commits the result as
-  // station-history.json. This page fetches that file from
+  // Actions job (.github/workflows/station-history.yml) scrapes both stations
+  // server-side every 15 min, where CORS doesn't apply, and commits the result
+  // as station-history-<location>.json. This page fetches those files from
   // raw.githubusercontent.com, which does send permissive CORS headers for a
   // public repo — so this works regardless of where index.html itself is hosted.
-  // The object below is only the bootstrap fallback, shown before that fetch
-  // resolves and if it ever fails (e.g. the Actions job hasn't run yet).
-  var histData = {
-    t: [[1789595521000,16.3],[1789596121000,16.2],[1789597321000,16],[1789598521000,15.4],[1789599721000,15.5],[1789600921000,15.3],[1789602121000,14.8],[1789603322000,14.7],[1789604821000,14.6],[1789606021000,14],[1789607221000,13.8],[1789608421000,13.3],[1789609621000,13.4],[1789610822000,13.3],[1789612021000,13.1],[1789613221000,12.7],[1789614421000,12.7],[1789615621000,12.8],[1789616821000,12.7],[1789618021000,12.4],[1789619221000,12.2],[1789620421000,12.2],[1789621621000,12.3],[1789622821000,12.5],[1789624021000,12.4],[1789625221000,13.2],[1789626421000,12.9],[1789627621000,12.8],[1789628821000,13.1],[1789630021000,13.1],[1789631221000,13.8],[1789632421000,14],[1789633621000,14.7],[1789634821000,15.5],[1789636021000,15.6],[1789637221000,17.2],[1789638421000,17.5],[1789639621000,17.6],[1789640821000,18.3],[1789642022000,17.6],[1789643221000,17.8],[1789644421000,17.3],[1789645621000,16.8],[1789646821000,16.6],[1789648021000,16.6],[1789649221000,16.5],[1789650421000,16.8],[1789651621000,16.4],[1789652821000,16.7],[1789654021000,17],[1789654941000,17],[1789656121000,16.7],[1789657321000,16.4],[1789658521000,16.6],[1789659721000,16.9],[1789660921000,17.1],[1789662121000,17.2],[1789663321000,17.7],[1789664521000,17.6],[1789665721000,17.5],[1789666921000,17.6],[1789668121000,17.7],[1789669321000,17.3],[1789670521000,17.2],[1789671721000,17.2],[1789672921000,16.9],[1789674421000,17],[1789675621000,16.9],[1789676821000,16.8],[1789678021000,16.7],[1789679221000,16.6],[1789680421000,16.5],[1789681621000,16.4]],
-    p: [[1789595521000,1016.4],[1789596921000,1016.7],[1789598321000,1016.7],[1789599721000,1016.8],[1789601221000,1017.1],[1789602721000,1017.1],[1789604221000,1017.1],[1789605721000,1017],[1789607221000,1017.1],[1789608721000,1016.9],[1789610221000,1016.9],[1789611721000,1016.7],[1789613221000,1016.7],[1789614721000,1016.8],[1789616221000,1017],[1789617721000,1017.3],[1789619221000,1017.5],[1789620721000,1017.6],[1789622221000,1017.7],[1789623721000,1017.9],[1789625221000,1018.1],[1789626721000,1018.2],[1789628221000,1018.5],[1789629721000,1018.8],[1789631221000,1018.6],[1789632721000,1018.6],[1789634221000,1019.1],[1789635721000,1019.3],[1789637221000,1019.8],[1789638721000,1020],[1789640221000,1020.2],[1789641721000,1020.4],[1789643221000,1021.1],[1789644721000,1021.1],[1789646221000,1021.4],[1789647721000,1021.3],[1789649221000,1020.3],[1789650721000,1020.3],[1789652221000,1020.4],[1789653721000,1020.4],[1789655221000,1020.4],[1789656721000,1020.7],[1789658221000,1020.1],[1789659721000,1019.5],[1789661221000,1019.7],[1789662721000,1019.7],[1789664221000,1019.5],[1789665721000,1019.3],[1789667221000,1019.3],[1789668722000,1019.2],[1789670221000,1019.3],[1789671721000,1019.2],[1789673221000,1018.9],[1789674721000,1019.6],[1789676221000,1019.7],[1789677721000,1019.9],[1789679221000,1020.1],[1789680721000,1020]],
-    r: [[1789595521000,0],[1789620121000,0],[1789642321000,0],[1789642921000,0.2],[1789644721000,1.4],[1789646521000,2.2],[1789648321000,2.4],[1789650121000,3],[1789651921000,3.2],[1789653721000,3.4],[1789657321000,3.8],[1789659121000,4.2],[1789681621000,4.2]]
+  // Oroslavje ships with a hand-pulled bootstrap snapshot (17 Sep, 21:47 CEST)
+  // shown before the live fetch resolves and if it ever fails; Opatija has no
+  // such snapshot (the location didn't exist on this dashboard before this
+  // Actions job did), so it just shows empty until the first live fetch lands.
+  var BOOTSTRAP_HIST = {
+    oroslavje: {
+      t: [[1789595521000,16.3],[1789596121000,16.2],[1789597321000,16],[1789598521000,15.4],[1789599721000,15.5],[1789600921000,15.3],[1789602121000,14.8],[1789603322000,14.7],[1789604821000,14.6],[1789606021000,14],[1789607221000,13.8],[1789608421000,13.3],[1789609621000,13.4],[1789610822000,13.3],[1789612021000,13.1],[1789613221000,12.7],[1789614421000,12.7],[1789615621000,12.8],[1789616821000,12.7],[1789618021000,12.4],[1789619221000,12.2],[1789620421000,12.2],[1789621621000,12.3],[1789622821000,12.5],[1789624021000,12.4],[1789625221000,13.2],[1789626421000,12.9],[1789627621000,12.8],[1789628821000,13.1],[1789630021000,13.1],[1789631221000,13.8],[1789632421000,14],[1789633621000,14.7],[1789634821000,15.5],[1789636021000,15.6],[1789637221000,17.2],[1789638421000,17.5],[1789639621000,17.6],[1789640821000,18.3],[1789642022000,17.6],[1789643221000,17.8],[1789644421000,17.3],[1789645621000,16.8],[1789646821000,16.6],[1789648021000,16.6],[1789649221000,16.5],[1789650421000,16.8],[1789651621000,16.4],[1789652821000,16.7],[1789654021000,17],[1789654941000,17],[1789656121000,16.7],[1789657321000,16.4],[1789658521000,16.6],[1789659721000,16.9],[1789660921000,17.1],[1789662121000,17.2],[1789663321000,17.7],[1789664521000,17.6],[1789665721000,17.5],[1789666921000,17.6],[1789668121000,17.7],[1789669321000,17.3],[1789670521000,17.2],[1789671721000,17.2],[1789672921000,16.9],[1789674421000,17],[1789675621000,16.9],[1789676821000,16.8],[1789678021000,16.7],[1789679221000,16.6],[1789680421000,16.5],[1789681621000,16.4]],
+      p: [[1789595521000,1016.4],[1789596921000,1016.7],[1789598321000,1016.7],[1789599721000,1016.8],[1789601221000,1017.1],[1789602721000,1017.1],[1789604221000,1017.1],[1789605721000,1017],[1789607221000,1017.1],[1789608721000,1016.9],[1789610221000,1016.9],[1789611721000,1016.7],[1789613221000,1016.7],[1789614721000,1016.8],[1789616221000,1017],[1789617721000,1017.3],[1789619221000,1017.5],[1789620721000,1017.6],[1789622221000,1017.7],[1789623721000,1017.9],[1789625221000,1018.1],[1789626721000,1018.2],[1789628221000,1018.5],[1789629721000,1018.8],[1789631221000,1018.6],[1789632721000,1018.6],[1789634221000,1019.1],[1789635721000,1019.3],[1789637221000,1019.8],[1789638721000,1020],[1789640221000,1020.2],[1789641721000,1020.4],[1789643221000,1021.1],[1789644721000,1021.1],[1789646221000,1021.4],[1789647721000,1021.3],[1789649221000,1020.3],[1789650721000,1020.3],[1789652221000,1020.4],[1789653721000,1020.4],[1789655221000,1020.4],[1789656721000,1020.7],[1789658221000,1020.1],[1789659721000,1019.5],[1789661221000,1019.7],[1789662721000,1019.7],[1789664221000,1019.5],[1789665721000,1019.3],[1789667221000,1019.3],[1789668722000,1019.2],[1789670221000,1019.3],[1789671721000,1019.2],[1789673221000,1018.9],[1789674721000,1019.6],[1789676221000,1019.7],[1789677721000,1019.9],[1789679221000,1020.1],[1789680721000,1020]],
+      r: [[1789595521000,0],[1789620121000,0],[1789642321000,0],[1789642921000,0.2],[1789644721000,1.4],[1789646521000,2.2],[1789648321000,2.4],[1789650121000,3],[1789651921000,3.2],[1789653721000,3.4],[1789657321000,3.8],[1789659121000,4.2],[1789681621000,4.2]]
+    },
+    opatija: null
   };
+  var histData = { t: [], p: [], r: [] }; // whatever's currently displayed; switchLocation() resets this
   var histMeta = {
     t: { label:"Temperature", unit:"°C", color:"var(--rain)", decimals:1 },
     p: { label:"Pressure", unit:"hPa", color:"var(--accent-2)", decimals:1 },
@@ -597,21 +640,25 @@
   var histRefreshBtn = document.getElementById("histRefresh");
   var histRefreshIcon = document.getElementById("histRefreshIcon");
 
-  var STATION_JSON_URL = "https://raw.githubusercontent.com/davidbartovcak/oroslavje-weather/main/station-history.json";
+  var STATION_JSON_BASE = "https://raw.githubusercontent.com/davidbartovcak/oroslavje-weather/main/";
   var STATION_STALE_MS = 40 * 60 * 1000; // the Actions job runs every 15 min — call it stuck past ~40 min of silence
+  var histLoadToken = 0; // guards a stale response landing after a location switch
 
   function loadStationHistory(){
+    var loc = currentLoc;
+    var token = ++histLoadToken;
     histRefreshBtn.disabled = true;
     histRefreshIcon.classList.add("spin");
     histDot.className = "dot";
     histStatusText.textContent = "Fetching latest snapshot…";
-    fetch(STATION_JSON_URL + "?t=" + Date.now())
+    fetch(STATION_JSON_BASE + loc.historyFile + "?t=" + Date.now())
       .then(function(res){
         if(!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
       .then(function(data){
-        if(!data || !data.t || !data.p || !data.r) throw new Error("malformed station-history.json");
+        if(token !== histLoadToken) return; // a newer location switch owns the UI now
+        if(!data || !data.t || !data.p || !data.r) throw new Error("malformed " + loc.historyFile);
         histData.t = data.t; histData.p = data.p; histData.r = data.r;
         renderHistChart();
         var ageMs = data.fetchedAt ? (Date.now() - new Date(data.fetchedAt).getTime()) : null;
@@ -625,19 +672,52 @@
         }
       })
       .catch(function(err){
+        if(token !== histLoadToken) return;
+        var bootstrap = BOOTSTRAP_HIST[loc.id];
         histDot.className = "dot stale";
-        histStatusText.textContent = "Couldn't fetch the auto-updated snapshot (" + err.message + ") — showing the bundled 17 Sep, 21:47 CEST snapshot.";
-        renderHistChart();
+        histStatusText.textContent = bootstrap
+          ? "Couldn't fetch the auto-updated snapshot (" + err.message + ") — showing the bundled 17 Sep, 21:47 CEST snapshot."
+          : "Couldn't fetch the auto-updated snapshot yet (" + err.message + ") — the Actions job may not have run for this location yet.";
       })
       .finally(function(){
+        if(token !== histLoadToken) return;
         histRefreshBtn.disabled = false;
         histRefreshIcon.classList.remove("spin");
       });
   }
   histRefreshBtn.addEventListener("click", loadStationHistory);
-  renderHistChart(); // paint the bundled fallback immediately so the chart isn't empty while the fetch is in flight
-  loadStationHistory();
-  setInterval(loadStationHistory, 15 * 60 * 1000);
+  setInterval(function(){ loadStationHistory(); }, 15 * 60 * 1000);
+
+  // ---------- Location switcher ----------
+  function switchLocation(locId){
+    var loc = LOCATIONS[locId];
+    if(!loc || loc === currentLoc) return;
+    currentLoc = loc;
+
+    document.querySelectorAll("#locationTabs .tab-btn").forEach(function(b){
+      b.classList.toggle("active", b.dataset.loc === locId);
+    });
+    document.getElementById("placeName").textContent = loc.label;
+    document.getElementById("placeCoords").innerHTML = loc.coordsHtml;
+    document.getElementById("yrLink").href = loc.yrUrl;
+    document.getElementById("pljusakHeadLink").href = "https://pljusak.com/meteo.php?stanica=" + loc.pljusakStation;
+    document.getElementById("pljusakChartLink").href = "https://pljusak.com/meteo.php?stanica=" + loc.pljusakStation;
+    document.getElementById("stationDesc").textContent = loc.stationDesc;
+    document.getElementById("stationFrame").src = "https://pljusak.com/sticker150.php?stanica=" + loc.pljusakStation;
+
+    var bootstrap = BOOTSTRAP_HIST[loc.id];
+    histData = bootstrap ? { t: bootstrap.t, p: bootstrap.p, r: bootstrap.r } : { t: [], p: [], r: [] };
+    renderHistChart(); // paint whatever's available immediately so the chart isn't left showing the old location
+
+    loadForecast();
+    loadStationHistory();
+  }
+  document.getElementById("locationTabs").addEventListener("click", function(e){
+    var btn = e.target.closest(".tab-btn"); if(!btn) return;
+    switchLocation(btn.dataset.loc);
+  });
+
+  switchLocation("oroslavje");
 })();
 </script>
 </body>
