@@ -509,10 +509,16 @@
   setInterval(loadSat, 10 * 60 * 1000);
 
   // ---------- 24h station history (Zabok–Šudigo) ----------
-  // Snapshot pulled directly from pljusak.com's own page data on 17 Sep 2026, 21:47 CEST.
-  // These are real recorded values, not placeholders — but they are a snapshot, not a live feed:
-  // a client-side fetch of pljusak.com from another origin is blocked by its lack of CORS headers,
-  // so "Refresh" below tries the live page and falls back to this snapshot when that's blocked.
+  // pljusak.com sends no CORS headers, so a browser can never fetch it directly
+  // from a page hosted elsewhere — that's enforced by the browser, not something
+  // a retry or a different request can work around. Instead, a scheduled GitHub
+  // Actions job (.github/workflows/station-history.yml) scrapes it server-side
+  // every 15 min, where CORS doesn't apply, and commits the result as
+  // station-history.json. This page fetches that file from
+  // raw.githubusercontent.com, which does send permissive CORS headers for a
+  // public repo — so this works regardless of where index.html itself is hosted.
+  // The object below is only the bootstrap fallback, shown before that fetch
+  // resolves and if it ever fails (e.g. the Actions job hasn't run yet).
   var histData = {
     t: [[1789595521000,16.3],[1789596121000,16.2],[1789597321000,16],[1789598521000,15.4],[1789599721000,15.5],[1789600921000,15.3],[1789602121000,14.8],[1789603322000,14.7],[1789604821000,14.6],[1789606021000,14],[1789607221000,13.8],[1789608421000,13.3],[1789609621000,13.4],[1789610822000,13.3],[1789612021000,13.1],[1789613221000,12.7],[1789614421000,12.7],[1789615621000,12.8],[1789616821000,12.7],[1789618021000,12.4],[1789619221000,12.2],[1789620421000,12.2],[1789621621000,12.3],[1789622821000,12.5],[1789624021000,12.4],[1789625221000,13.2],[1789626421000,12.9],[1789627621000,12.8],[1789628821000,13.1],[1789630021000,13.1],[1789631221000,13.8],[1789632421000,14],[1789633621000,14.7],[1789634821000,15.5],[1789636021000,15.6],[1789637221000,17.2],[1789638421000,17.5],[1789639621000,17.6],[1789640821000,18.3],[1789642022000,17.6],[1789643221000,17.8],[1789644421000,17.3],[1789645621000,16.8],[1789646821000,16.6],[1789648021000,16.6],[1789649221000,16.5],[1789650421000,16.8],[1789651621000,16.4],[1789652821000,16.7],[1789654021000,17],[1789654941000,17],[1789656121000,16.7],[1789657321000,16.4],[1789658521000,16.6],[1789659721000,16.9],[1789660921000,17.1],[1789662121000,17.2],[1789663321000,17.7],[1789664521000,17.6],[1789665721000,17.5],[1789666921000,17.6],[1789668121000,17.7],[1789669321000,17.3],[1789670521000,17.2],[1789671721000,17.2],[1789672921000,16.9],[1789674421000,17],[1789675621000,16.9],[1789676821000,16.8],[1789678021000,16.7],[1789679221000,16.6],[1789680421000,16.5],[1789681621000,16.4]],
     p: [[1789595521000,1016.4],[1789596921000,1016.7],[1789598321000,1016.7],[1789599721000,1016.8],[1789601221000,1017.1],[1789602721000,1017.1],[1789604221000,1017.1],[1789605721000,1017],[1789607221000,1017.1],[1789608721000,1016.9],[1789610221000,1016.9],[1789611721000,1016.7],[1789613221000,1016.7],[1789614721000,1016.8],[1789616221000,1017],[1789617721000,1017.3],[1789619221000,1017.5],[1789620721000,1017.6],[1789622221000,1017.7],[1789623721000,1017.9],[1789625221000,1018.1],[1789626721000,1018.2],[1789628221000,1018.5],[1789629721000,1018.8],[1789631221000,1018.6],[1789632721000,1018.6],[1789634221000,1019.1],[1789635721000,1019.3],[1789637221000,1019.8],[1789638721000,1020],[1789640221000,1020.2],[1789641721000,1020.4],[1789643221000,1021.1],[1789644721000,1021.1],[1789646221000,1021.4],[1789647721000,1021.3],[1789649221000,1020.3],[1789650721000,1020.3],[1789652221000,1020.4],[1789653721000,1020.4],[1789655221000,1020.4],[1789656721000,1020.7],[1789658221000,1020.1],[1789659721000,1019.5],[1789661221000,1019.7],[1789662721000,1019.7],[1789664221000,1019.5],[1789665721000,1019.3],[1789667221000,1019.3],[1789668722000,1019.2],[1789670221000,1019.3],[1789671721000,1019.2],[1789673221000,1018.9],[1789674721000,1019.6],[1789676221000,1019.7],[1789677721000,1019.9],[1789679221000,1020.1],[1789680721000,1020]],
@@ -583,39 +589,47 @@
   var histRefreshBtn = document.getElementById("histRefresh");
   var histRefreshIcon = document.getElementById("histRefreshIcon");
 
-  function tryLiveHistRefresh(){
+  var STATION_JSON_URL = "https://raw.githubusercontent.com/davidbartovcak/oroslavje-weather/main/station-history.json";
+  var STATION_STALE_MS = 40 * 60 * 1000; // the Actions job runs every 15 min — call it stuck past ~40 min of silence
+
+  function loadStationHistory(){
     histRefreshBtn.disabled = true;
     histRefreshIcon.classList.add("spin");
     histDot.className = "dot";
-    histStatusText.textContent = "Trying pljusak.com directly…";
-    fetch("https://pljusak.com/meteo.php?stanica=sudigo")
+    histStatusText.textContent = "Fetching latest snapshot…";
+    fetch(STATION_JSON_URL + "?t=" + Date.now())
       .then(function(res){
         if(!res.ok) throw new Error("HTTP " + res.status);
-        return res.text();
+        return res.json();
       })
-      .then(function(html){
-        function extract(varName){
-          var m = html.match(new RegExp("var " + varName + "\\s*=\\s*(\\[[\\s\\S]*?\\]);"));
-          return m ? JSON.parse(m[1]) : null;
-        }
-        var t = extract("temperature_24h"), p = extract("tlakovi_24h"), r = extract("oborine_24h");
-        if(!t || !p || !r) throw new Error("couldn't find station data in the page");
-        histData.t = t; histData.p = p; histData.r = r;
+      .then(function(data){
+        if(!data || !data.t || !data.p || !data.r) throw new Error("malformed station-history.json");
+        histData.t = data.t; histData.p = data.p; histData.r = data.r;
         renderHistChart();
-        histDot.className = "dot";
-        histStatusText.textContent = "Live · updated " + new Date().toLocaleTimeString("en-GB", { timeZone: TZ });
+        var ageMs = data.fetchedAt ? (Date.now() - new Date(data.fetchedAt).getTime()) : null;
+        var ageTxt = data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString("en-GB", { timeZone: TZ }) : "unknown time";
+        if(ageMs !== null && ageMs > STATION_STALE_MS){
+          histDot.className = "dot stale";
+          histStatusText.textContent = "Auto-update job looks stuck — last snapshot from " + ageTxt + ". Check the workflow on GitHub.";
+        } else {
+          histDot.className = "dot";
+          histStatusText.textContent = "Auto-updated every ~15 min · snapshot from " + ageTxt;
+        }
       })
       .catch(function(err){
         histDot.className = "dot stale";
-        histStatusText.textContent = "pljusak.com can't be reached from a page hosted elsewhere (" + err.message + ") — showing the 21:47 snapshot. Use the ↗ link for live charts.";
+        histStatusText.textContent = "Couldn't fetch the auto-updated snapshot (" + err.message + ") — showing the bundled 17 Sep, 21:47 CEST snapshot.";
+        renderHistChart();
       })
       .finally(function(){
         histRefreshBtn.disabled = false;
         histRefreshIcon.classList.remove("spin");
       });
   }
-  histRefreshBtn.addEventListener("click", tryLiveHistRefresh);
-  renderHistChart();
+  histRefreshBtn.addEventListener("click", loadStationHistory);
+  renderHistChart(); // paint the bundled fallback immediately so the chart isn't empty while the fetch is in flight
+  loadStationHistory();
+  setInterval(loadStationHistory, 15 * 60 * 1000);
 })();
 </script>
 </body>
