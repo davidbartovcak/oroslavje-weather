@@ -559,7 +559,15 @@
     // x labels: start, mid, end (local time)
     [0, Math.floor(series.length/2), series.length-1].forEach(function(idx){
       var p = series[idx];
-      var lbl = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour:"2-digit", minute:"2-digit" }).format(new Date(p[0]));
+      // pljusak.com's own timestamps bake the Zagreb offset into the epoch
+      // value itself rather than emitting a true UTC epoch (confirmed: the
+      // newest point's raw value, read via getUTCHours/Minutes, lines up with
+      // the real local fetch time to the minute). Reading it with a proper
+      // IANA timezone conversion (timeZone: TZ) would apply the +1/+2h Zagreb
+      // offset a second time. So read the UTC fields directly instead —
+      // that's what actually recovers the correct local time here.
+      var d = new Date(p[0]);
+      var lbl = String(d.getUTCHours()).padStart(2,"0") + ":" + String(d.getUTCMinutes()).padStart(2,"0");
       var x = X(p[0]);
       var anchor = idx===0 ? "start" : idx===series.length-1 ? "end" : "middle";
       parts.push('<text x="'+x.toFixed(1)+'" y="'+(H-8)+'" font-size="10" fill="'+textColor+'" text-anchor="'+anchor+'" font-family="IBM Plex Mono, monospace">'+lbl+'</text>');
