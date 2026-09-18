@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Oroslavje Weather</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌦️</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#eef2f7; --surface:#ffffff; --surface-2:#e3eaf3; --text:#141c2b; --text-dim:#5c6b80;
+    --accent:#1f6fdb; --accent-2:#d9711d; --border:#d7e0ea; --rain:#2f7dd1; --good:#1f9d55; --warn:#c67c00; --bad:#c0392b;
+    --shadow: 0 1px 2px rgba(20,28,43,.04), 0 8px 24px -12px rgba(20,28,43,.14);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0a0f18; --surface:#111a26; --surface-2:#17212f; --text:#e8edf5; --text-dim:#8b99ad;
+      --accent:#5b9dff; --accent-2:#ff9a52; --border:#22303f; --rain:#5b9dff; --good:#3ecb7c; --warn:#e0a838; --bad:#ff6b5e;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 28px -14px rgba(0,0,0,.6);
+    }
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg); color: var(--text);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding-inline: 16px;
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .wrap{ max-width:1180px; margin:0 auto; padding-block:20px 40px; }
+
+  header.top{ display:flex; flex-wrap:wrap; gap:16px 24px; align-items:flex-end; justify-content:space-between;
+    padding-bottom:18px; margin-bottom:22px; border-bottom:1px solid var(--border); }
+  .place h1{ font-size:30px; font-weight:700; margin:0 0 4px; letter-spacing:-.01em; }
+  .place .coords{ color:var(--text-dim); font-size:12.5px; }
+  .now{ display:flex; align-items:center; gap:14px; }
+  .now .clock{ text-align:right; }
+  .now .clock .time{ font-size:22px; font-weight:600; line-height:1; }
+  .now .clock .date{ color:var(--text-dim); font-size:12px; margin-top:3px; }
+  .now .snap{ display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:8px 14px; box-shadow:var(--shadow); }
+  .now .snap .t{ font-size:22px; font-weight:700; }
+  .now .snap .meta{ font-size:11.5px; color:var(--text-dim); line-height:1.35; }
+
+  .grid{ display:grid; grid-template-columns:1.15fr .85fr; gap:18px; }
+  @media (max-width:860px){ .grid{ grid-template-columns:1fr; } }
+
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow);
+    overflow:hidden; display:flex; flex-direction:column; }
+  .panel .head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    padding:14px 18px 12px; border-bottom:1px solid var(--border); }
+  .panel .head h2{ font-size:15px; margin:0; font-weight:700; letter-spacing:.01em; }
+  .panel .head .actions{ display:flex; align-items:center; gap:10px; }
+  .panel .body{ padding:14px 18px 18px; flex:1; }
+  .src-link{ font-size:11.5px; color:var(--accent); text-decoration:none; white-space:nowrap;
+    border-bottom:1px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
+  .src-link:hover{ opacity:.8; }
+
+  .icon-btn{ border:1px solid var(--border); background:var(--surface-2); color:var(--text); font-size:11.5px;
+    padding:5px 12px; border-radius:999px; cursor:pointer; font-family:inherit; font-weight:600; display:inline-flex; align-items:center; gap:5px; }
+  .icon-btn:hover{ border-color:var(--accent); color:var(--accent); }
+  .icon-btn:disabled{ opacity:.55; cursor:default; }
+  .icon-btn .spin{ display:inline-block; animation:spin 1s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  table.fc{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.fc th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim);
+    font-weight:600; padding:0 8px 8px; border-bottom:1px solid var(--border); }
+  table.fc td{ padding:9px 8px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table.fc tr:last-child td{ border-bottom:none; }
+  table.fc tr.today td{ background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .day-cell{ font-weight:600; white-space:nowrap; }
+  .day-cell .rel{ display:block; font-weight:400; color:var(--text-dim); font-size:11px; }
+  .sky{ font-size:18px; }
+  .hilo .hi{ font-weight:700; } .hilo .lo{ color:var(--text-dim); }
+  .precip-cell{ min-width:74px; }
+  .precip-num{ display:block; } .precip-num.zero{ color:var(--text-dim); font-style:italic; }
+  .bar-track{ height:4px; border-radius:2px; background:var(--surface-2); margin-top:4px; overflow:hidden; }
+  .bar-fill{ height:100%; background:var(--rain); border-radius:2px; }
+  .wind-cell{ color:var(--text-dim); white-space:nowrap; }
+  .fc-status{ font-size:11px; color:var(--text-dim); margin-top:8px; display:flex; align-items:center; gap:6px; }
+  .fc-status.err{ color:var(--bad); }
+  .dot{ width:6px; height:6px; border-radius:50%; background:var(--good); display:inline-block; }
+  .dot.stale{ background:var(--warn); } .dot.err{ background:var(--bad); }
+
+  .media-box{ position:relative; border-radius:12px; overflow:hidden; background:var(--surface-2);
+    border:1px solid var(--border); aspect-ratio:4/3.15; display:flex; align-items:center; justify-content:center; }
+  .media-box img{ width:100%; height:100%; object-fit:contain; display:block; background:var(--surface-2); }
+  .media-fallback{ position:absolute; inset:0; display:none; flex-direction:column; gap:10px; align-items:center; justify-content:center;
+    text-align:center; padding:20px; color:var(--text-dim); font-size:13px; }
+  .media-fallback.show{ display:flex; }
+  .media-fallback a{ color:var(--accent); font-weight:600; text-decoration:none; }
+  .media-meta{ display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:11.5px; color:var(--text-dim); }
+  .tabs{ display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .tab-btn{ border:1px solid var(--border); background:var(--surface-2); color:var(--text-dim); font-size:11.5px;
+    padding:6px 12px; border-radius:999px; cursor:pointer; font-family:inherit; font-weight:600; }
+  .tab-btn.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  .station-now{ display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px; }
+  .stat{ background:var(--surface-2); border-radius:12px; padding:10px 12px; }
+  .stat .label{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); }
+  .stat .value{ font-size:19px; font-weight:700; margin-top:2px; }
+  .stat .value small{ font-size:12px; font-weight:500; color:var(--text-dim); }
+  .station-frame-wrap{ border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface-2); position:relative; }
+  .station-frame-wrap iframe{ width:100%; height:150px; border:0; display:block; }
+  .asof{ font-size:11px; color:var(--text-dim); margin-top:8px; }
+  footer{ margin-top:28px; padding-top:16px; border-top:1px solid var(--border); color:var(--text-dim); font-size:11.5px; line-height:1.6; }
+  footer a{ color:var(--accent); text-decoration:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="place">
+      <h1>Oroslavje</h1>
+      <div class="coords mono">45.9963°N&nbsp; 15.8981°E&nbsp; · &nbsp;180 m&nbsp; · &nbsp;Krapina‑Zagorje, Croatia</div>
+    </div>
+    <div class="now">
+      <div class="clock">
+        <div class="time mono" id="clockTime">--:--:--</div>
+        <div class="date" id="clockDate">—</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div style="display:flex; flex-direction:column; gap:18px;">
+
+      <section class="panel">
+        <div class="head">
+          <h2>10‑day forecast</h2>
+          <div class="actions">
+            <button class="icon-btn" id="fcRefresh"><span id="fcRefreshIcon">↻</span> Refresh</button>
+            <a class="src-link" href="https://www.yr.no/en/forecast/daily-table/2-3193962/Croatia/Krapina-Zagorje%20County/Town%20of%20Oroslavje/Oroslavje" target="_blank" rel="noopener">yr.no ↗</a>
+          </div>
+        </div>
+        <div class="body">
+          <div style="overflow-x:auto;">
+            <table class="fc">
+              <thead><tr><th>Day</th><th></th><th>Condition</th><th>High / Low</th><th>Precip.</th><th>Wind</th></tr></thead>
+              <tbody id="fcBody"></tbody>
+            </table>
+          </div>
+          <div class="fc-status" id="fcStatus"><span class="dot" id="fcDot"></span><span id="fcStatusText">Loading…</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="head">
+          <h2>Precipitation radar</h2>
+          <a class="src-link" href="https://meteo.arso.gov.si/met/sl/weather/observ/radar/" target="_blank" rel="noopener">ARSO ↗</a>
+        </div>
+        <div class="body">
+          <div class="media-box" id="radarBox">
+            <img id="radarImg" alt="ARSO precipitation radar — Slovenia and surroundings">
+            <div class="media-fallback" id="radarFallback">
+              <span>Live radar image didn't load.</span>
+              <a href="https://meteo.arso.gov.si/met/sl/weather/observ/radar/" target="_blank" rel="noopener">Open ARSO radar ↗</a>
+            </div>
+          </div>
+          <div class="media-meta">
+            <span id="radarStamp">Requesting latest frame…</span>
+            <button class="icon-btn" id="radarRefresh">↻ Refresh</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:18px;">
+
+      <section class="panel">
+        <div class="head">
+          <h2>Satellite</h2>
+          <a class="src-link" id="osmerLink" href="https://www.osmer.fvg.it/satellite.php?ln=" target="_blank" rel="noopener">ARPA FVG ↗</a>
+        </div>
+        <div class="body">
+          <div class="tabs" id="satChannelTabs">
+            <button class="tab-btn" data-ch="IR">Infrared</button>
+            <button class="tab-btn active" data-ch="VIS">Visible</button>
+            <button class="tab-btn" data-ch="WV">Water vapour</button>
+          </div>
+          <div class="tabs" id="satRegionTabs">
+            <button class="tab-btn" data-region="EUR" data-res="MR">Europe</button>
+            <button class="tab-btn active" data-region="ITN" data-res="MR">N. Italy / Adriatic</button>
+          </div>
+          <div class="media-box" id="satBox">
+            <img id="satImg" alt="Meteosat imagery over Europe">
+            <div class="media-fallback" id="satFallback">
+              <span id="satFallbackText">No recent frame loaded for this channel yet.</span>
+              <a href="https://www.osmer.fvg.it/satellite.php?ln=" target="_blank" rel="noopener">Open OSMER satellite ↗</a>
+            </div>
+          </div>
+          <div class="media-meta">
+            <span id="satStamp">Locating latest pass…</span>
+            <button class="icon-btn" id="satRefresh">↻ Refresh</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="head">
+          <h2>24h station history</h2>
+          <div class="actions">
+            <button class="icon-btn" id="histRefresh"><span id="histRefreshIcon">↻</span> Refresh</button>
+            <a class="src-link" href="https://pljusak.com/meteo.php?stanica=sudigo" target="_blank" rel="noopener">pljusak.com ↗</a>
+          </div>
+        </div>
+        <div class="body">
+          <div class="tabs" id="histTabs">
+            <button class="tab-btn active" data-metric="t">Temperature</button>
+            <button class="tab-btn" data-metric="p">Pressure</button>
+            <button class="tab-btn" data-metric="r">Precipitation</button>
+          </div>
+          <svg id="histChart" viewBox="0 0 600 190" style="width:100%; height:auto; display:block;"></svg>
+          <div class="fc-status" id="histStatus"><span class="dot" id="histDot"></span><span id="histStatusText">Showing a snapshot pulled 17 Sep, 21:47 CEST</span></div>
+          <div class="asof">Station: Zabok, Šudigo (nearest public station to Oroslavje, ~9 km SE) · current reading below refreshes on its own · full interactive chart on pljusak.com ↗</div>
+          <div class="station-frame-wrap" style="margin-top:12px;">
+            <iframe id="stationFrame" src="https://pljusak.com/sticker150.php?stanica=sudigo" title="Zabok–Šudigo live conditions" loading="lazy"></iframe>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <footer>
+    Forecast pulled live from <a href="https://api.met.no/weatherapi/locationforecast/2.0/compact" target="_blank" rel="noopener">api.met.no</a> (the data behind yr.no) ·
+    radar from <a href="https://meteo.arso.gov.si/met/sl/weather/observ/radar/" target="_blank" rel="noopener">ARSO</a> ·
+    satellite from <a href="https://www.osmer.fvg.it/satellite.php?ln=" target="_blank" rel="noopener">ARPA FVG / OSMER</a> ·
+    station history from <a href="https://pljusak.com/meteo.php?stanica=sudigo" target="_blank" rel="noopener">pljusak.com</a> (Zabok–Šudigo).
+    This is a static file — host it yourself (your own web server, GitHub Pages, or just open it locally) so it can reach these sites directly from your browser.
+  </footer>
+</div>
+
+<script>
+(function(){
+  var LAT = 45.9962843, LON = 15.898121, ALT = 180, TZ = "Europe/Zagreb";
+
+  // ---------- Clock ----------
+  function tickClock(){
+    var now = new Date();
+    try{
+      document.getElementById("clockTime").textContent = new Intl.DateTimeFormat("en-GB", { timeZone:TZ, hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false }).format(now);
+      document.getElementById("clockDate").textContent = new Intl.DateTimeFormat("en-GB", { timeZone:TZ, weekday:"short", day:"numeric", month:"short" }).format(now) + " local";
+    }catch(e){}
+  }
+  tickClock(); setInterval(tickClock, 1000);
+
+  // ---------- Forecast (live, via api.met.no) ----------
+  var ICONS = {clearsky:"☀️", fair:"🌤️", partlycloudy:"⛅", cloudy:"☁️", fog:"🌫️",
+    lightrain:"🌦️", rain:"🌧️", heavyrain:"🌧️", lightrainshowers:"🌦️", rainshowers:"🌦️", heavyrainshowers:"🌧️",
+    lightsleet:"🌨️", sleet:"🌨️", lightsnow:"🌨️", snow:"❄️", heavysnow:"❄️",
+    thunder:"⛈️", lightrainshowersandthunder:"⛈️", rainshowersandthunder:"⛈️"};
+  var NIGHT_ICONS = {clearsky:"🌙", fair:"🌙", partlycloudy:"☁️"};
+
+  function iconFor(symbolCode){
+    if(!symbolCode) return "•";
+    var isNight = symbolCode.indexOf("_night") !== -1;
+    var base = symbolCode.replace(/_day|_night|_polartwilight/g, "");
+    if(isNight && NIGHT_ICONS[base]) return NIGHT_ICONS[base];
+    return ICONS[base] || "•";
+  }
+  function localDateKey(iso){ return new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ }); }
+  function localHour(iso){ return parseInt(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour:"2-digit", hour12:false }).format(new Date(iso)), 10); }
+
+  function buildForecastRows(timeseries){
+    var days = {}; // dateKey -> {temps:[], precip:0, symbols:[{hour,code}], winds:[]}
+    timeseries.forEach(function(entry){
+      var key = localDateKey(entry.time);
+      if(!days[key]) days[key] = { temps:[], precip:0, symbols:[], winds:[] };
+      var d = days[key];
+      var inst = entry.data.instant && entry.data.instant.details;
+      if(inst){
+        if(typeof inst.air_temperature === "number") d.temps.push(inst.air_temperature);
+        if(typeof inst.wind_speed === "number") d.winds.push(inst.wind_speed);
+      }
+      var n6 = entry.data.next_6_hours;
+      if(n6){
+        if(n6.details && typeof n6.details.precipitation_amount === "number") d.precip += n6.details.precipitation_amount;
+        if(n6.summary && n6.summary.symbol_code) d.symbols.push({ hour: localHour(entry.time), code: n6.summary.symbol_code });
+      }
+    });
+    var keys = Object.keys(days).sort();
+    var todayKey = new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+    return keys.slice(0, 10).map(function(key, i){
+      var d = days[key];
+      var hi = d.temps.length ? Math.round(Math.max.apply(null, d.temps)) : null;
+      var lo = d.temps.length ? Math.round(Math.min.apply(null, d.temps)) : null;
+      var wind = d.winds.length ? Math.round(Math.max.apply(null, d.winds)) : null;
+      // representative symbol: closest to local noon
+      var symbol = null, best = 99;
+      d.symbols.forEach(function(s){ var diff = Math.abs(s.hour - 13); if(diff < best){ best = diff; symbol = s.code; } });
+      var dt = new Date(key + "T12:00:00");
+      var label = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, weekday:"short", day:"numeric", month:"short" }).format(dt);
+      return { key:key, label:label, isToday: key === todayKey, hi:hi, lo:lo, precip: Math.round(d.precip*10)/10, wind:wind, symbol:symbol };
+    });
+  }
+
+  function renderForecast(rows){
+    var maxPrecip = Math.max.apply(null, rows.map(function(r){ return r.precip; }).concat([6]));
+    var html = "";
+    rows.forEach(function(r){
+      var pct = Math.round((r.precip / maxPrecip) * 100);
+      html += '<tr class="'+(r.isToday ? "today" : "")+'">' +
+        '<td class="day-cell">'+r.label+(r.isToday ? '<span class="rel">Today</span>' : '')+'</td>' +
+        '<td class="sky">'+iconFor(r.symbol)+'</td>' +
+        '<td style="color:var(--text-dim); font-size:12px;">'+(r.symbol ? r.symbol.replace(/_/g," ").replace(/day|night/,"").trim() : "—")+'</td>' +
+        '<td class="hilo mono">'+(r.hi!=null ? '<span class="hi">'+r.hi+'°</span> / <span class="lo">'+r.lo+'°</span>' : "—")+'</td>' +
+        '<td class="precip-cell"><span class="precip-num mono'+(r.precip===0 ? " zero":"")+'">'+(r.precip===0 ? "0 mm" : r.precip.toFixed(1)+" mm")+'</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div></td>' +
+        '<td class="wind-cell mono">'+(r.wind!=null ? r.wind+" m/s" : "—")+'</td>' +
+        '</tr>';
+    });
+    document.getElementById("fcBody").innerHTML = html;
+  }
+
+  var fcDot = document.getElementById("fcDot");
+  var fcStatusText = document.getElementById("fcStatusText");
+  var fcRefreshBtn = document.getElementById("fcRefresh");
+  var fcRefreshIcon = document.getElementById("fcRefreshIcon");
+
+  function setStatus(mode, text){
+    fcDot.className = "dot" + (mode === "err" ? " err" : mode === "stale" ? " stale" : "");
+    fcStatusText.textContent = text;
+  }
+
+  function loadForecast(){
+    fcRefreshBtn.disabled = true;
+    fcRefreshIcon.classList.add("spin");
+    setStatus("ok", "Fetching live forecast from api.met.no…");
+    fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat="+LAT+"&lon="+LON+"&altitude="+ALT)
+      .then(function(res){
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function(json){
+        var rows = buildForecastRows(json.properties.timeseries);
+        renderForecast(rows);
+        setStatus("ok", "Live · updated " + new Date().toLocaleTimeString("en-GB", { timeZone: TZ }));
+      })
+      .catch(function(err){
+        setStatus("err", "Couldn't reach api.met.no (" + err.message + ") — showing last loaded data. Try Refresh, or open yr.no directly.");
+      })
+      .finally(function(){
+        fcRefreshBtn.disabled = false;
+        fcRefreshIcon.classList.remove("spin");
+      });
+  }
+  fcRefreshBtn.addEventListener("click", loadForecast);
+  loadForecast();
+  setInterval(loadForecast, 30 * 60 * 1000);
+
+  // ---------- Radar (ARSO) ----------
+  var radarImg = document.getElementById("radarImg");
+  var radarFallback = document.getElementById("radarFallback");
+  var radarStamp = document.getElementById("radarStamp");
+  function loadRadar(){
+    radarFallback.classList.remove("show");
+    radarImg.onload = function(){ radarStamp.textContent = "Loaded " + new Date().toLocaleTimeString("en-GB"); };
+    radarImg.onerror = function(){ radarFallback.classList.add("show"); radarStamp.textContent = "Unavailable"; };
+    radarImg.src = "https://meteo.arso.gov.si/uploads/probase/www/observ/radar/si0-rm.gif?t=" + Date.now();
+  }
+  document.getElementById("radarRefresh").addEventListener("click", loadRadar);
+  loadRadar();
+  setInterval(loadRadar, 5 * 60 * 1000);
+
+  // ---------- Satellite (OSMER) ----------
+  var satImg = document.getElementById("satImg");
+  var satFallback = document.getElementById("satFallback");
+  var satStamp = document.getElementById("satStamp");
+  var satState = { ch:"VIS", region:"ITN", res:"MR" };
+  var satFallbackText = document.getElementById("satFallbackText");
+  var NO_FRAME_MSG = {
+    VIS: "No visible-light frame available right now — this channel only has imagery during daylight hours.",
+    IR: "No recent infrared frame found.",
+    WV: "No recent water-vapour frame found."
+  };
+  function pad2(n){ return n < 10 ? "0"+n : ""+n; }
+  function osmerUrl(ch, region, res, dt){
+    var y = dt.getUTCFullYear(), m = pad2(dt.getUTCMonth()+1), d = pad2(dt.getUTCDate());
+    var hh = pad2(dt.getUTCHours()), mm = pad2(dt.getUTCMinutes());
+    var ymd = ""+y+m+d, stamp = ymd+hh+mm;
+    return "https://www.osmer.fvg.it/sat/img/"+ch+"/"+y+"/"+ymd+"/"+stamp+"-"+ch+"-"+region+"-"+res+"-M.jpg";
+  }
+  function tryLoadSat(candidates, idx, ch, region){
+    if(idx >= candidates.length){
+      satImg.removeAttribute("src");
+      satFallbackText.textContent = NO_FRAME_MSG[ch] || "No recent frame found.";
+      satFallback.classList.add("show");
+      satStamp.textContent = "No recent frame found";
+      return;
+    }
+    var dt = candidates[idx];
+    var url = osmerUrl(ch, region, satState.res, dt);
+    var probe = new Image();
+    probe.onload = function(){
+      if(satState.ch !== ch || satState.region !== region) return;
+      satFallback.classList.remove("show");
+      satImg.src = url;
+      satStamp.textContent = dt.toUTCString().slice(0,22) + " UTC";
+    };
+    probe.onerror = function(){ tryLoadSat(candidates, idx+1, ch, region); };
+    probe.src = url;
+  }
+  function loadSat(){
+    var ch = satState.ch, region = satState.region;
+    satStamp.textContent = "Locating latest pass…";
+    satFallback.classList.remove("show");
+    var now = new Date(); now.setUTCSeconds(0,0);
+    var minute = now.getUTCMinutes(); now.setUTCMinutes(minute - (minute % 15));
+    var candidates = [];
+    for(var i=0; i<20; i++) candidates.push(new Date(now.getTime() - i*15*60000));
+    tryLoadSat(candidates, 0, ch, region);
+  }
+  document.getElementById("satRefresh").addEventListener("click", loadSat);
+  document.getElementById("satChannelTabs").addEventListener("click", function(e){
+    var btn = e.target.closest(".tab-btn"); if(!btn) return;
+    this.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active"); satState.ch = btn.dataset.ch; loadSat();
+  });
+  document.getElementById("satRegionTabs").addEventListener("click", function(e){
+    var btn = e.target.closest(".tab-btn"); if(!btn) return;
+    this.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active"); satState.region = btn.dataset.region; satState.res = btn.dataset.res; loadSat();
+  });
+  loadSat();
+  setInterval(loadSat, 10 * 60 * 1000);
+
+  // ---------- 24h station history (Zabok–Šudigo) ----------
+  // Snapshot pulled directly from pljusak.com's own page data on 17 Sep 2026, 21:47 CEST.
+  // These are real recorded values, not placeholders — but they are a snapshot, not a live feed:
+  // a client-side fetch of pljusak.com from another origin is blocked by its lack of CORS headers,
+  // so "Refresh" below tries the live page and falls back to this snapshot when that's blocked.
+  var histData = {
+    t: [[1789595521000,16.3],[1789596121000,16.2],[1789597321000,16],[1789598521000,15.4],[1789599721000,15.5],[1789600921000,15.3],[1789602121000,14.8],[1789603322000,14.7],[1789604821000,14.6],[1789606021000,14],[1789607221000,13.8],[1789608421000,13.3],[1789609621000,13.4],[1789610822000,13.3],[1789612021000,13.1],[1789613221000,12.7],[1789614421000,12.7],[1789615621000,12.8],[1789616821000,12.7],[1789618021000,12.4],[1789619221000,12.2],[1789620421000,12.2],[1789621621000,12.3],[1789622821000,12.5],[1789624021000,12.4],[1789625221000,13.2],[1789626421000,12.9],[1789627621000,12.8],[1789628821000,13.1],[1789630021000,13.1],[1789631221000,13.8],[1789632421000,14],[1789633621000,14.7],[1789634821000,15.5],[1789636021000,15.6],[1789637221000,17.2],[1789638421000,17.5],[1789639621000,17.6],[1789640821000,18.3],[1789642022000,17.6],[1789643221000,17.8],[1789644421000,17.3],[1789645621000,16.8],[1789646821000,16.6],[1789648021000,16.6],[1789649221000,16.5],[1789650421000,16.8],[1789651621000,16.4],[1789652821000,16.7],[1789654021000,17],[1789654941000,17],[1789656121000,16.7],[1789657321000,16.4],[1789658521000,16.6],[1789659721000,16.9],[1789660921000,17.1],[1789662121000,17.2],[1789663321000,17.7],[1789664521000,17.6],[1789665721000,17.5],[1789666921000,17.6],[1789668121000,17.7],[1789669321000,17.3],[1789670521000,17.2],[1789671721000,17.2],[1789672921000,16.9],[1789674421000,17],[1789675621000,16.9],[1789676821000,16.8],[1789678021000,16.7],[1789679221000,16.6],[1789680421000,16.5],[1789681621000,16.4]],
+    p: [[1789595521000,1016.4],[1789596921000,1016.7],[1789598321000,1016.7],[1789599721000,1016.8],[1789601221000,1017.1],[1789602721000,1017.1],[1789604221000,1017.1],[1789605721000,1017],[1789607221000,1017.1],[1789608721000,1016.9],[1789610221000,1016.9],[1789611721000,1016.7],[1789613221000,1016.7],[1789614721000,1016.8],[1789616221000,1017],[1789617721000,1017.3],[1789619221000,1017.5],[1789620721000,1017.6],[1789622221000,1017.7],[1789623721000,1017.9],[1789625221000,1018.1],[1789626721000,1018.2],[1789628221000,1018.5],[1789629721000,1018.8],[1789631221000,1018.6],[1789632721000,1018.6],[1789634221000,1019.1],[1789635721000,1019.3],[1789637221000,1019.8],[1789638721000,1020],[1789640221000,1020.2],[1789641721000,1020.4],[1789643221000,1021.1],[1789644721000,1021.1],[1789646221000,1021.4],[1789647721000,1021.3],[1789649221000,1020.3],[1789650721000,1020.3],[1789652221000,1020.4],[1789653721000,1020.4],[1789655221000,1020.4],[1789656721000,1020.7],[1789658221000,1020.1],[1789659721000,1019.5],[1789661221000,1019.7],[1789662721000,1019.7],[1789664221000,1019.5],[1789665721000,1019.3],[1789667221000,1019.3],[1789668722000,1019.2],[1789670221000,1019.3],[1789671721000,1019.2],[1789673221000,1018.9],[1789674721000,1019.6],[1789676221000,1019.7],[1789677721000,1019.9],[1789679221000,1020.1],[1789680721000,1020]],
+    r: [[1789595521000,0],[1789620121000,0],[1789642321000,0],[1789642921000,0.2],[1789644721000,1.4],[1789646521000,2.2],[1789648321000,2.4],[1789650121000,3],[1789651921000,3.2],[1789653721000,3.4],[1789657321000,3.8],[1789659121000,4.2],[1789681621000,4.2]]
+  };
+  var histMeta = {
+    t: { label:"Temperature", unit:"°C", color:"var(--rain)", decimals:1 },
+    p: { label:"Pressure", unit:"hPa", color:"var(--accent-2)", decimals:1 },
+    r: { label:"Precipitation (cumulative today)", unit:"mm", color:"var(--good)", decimals:1, area:true }
+  };
+  var histState = { metric:"t", snapshotLabel:"Showing a snapshot pulled 17 Sep, 21:47 CEST" };
+
+  function renderHistChart(){
+    var series = histData[histState.metric];
+    var meta = histMeta[histState.metric];
+    var svg = document.getElementById("histChart");
+    if(!series || !series.length){ svg.innerHTML = ""; return; }
+    var W = 600, H = 190, padL = 42, padR = 12, padT = 14, padB = 26;
+    var xs = series.map(function(p){ return p[0]; });
+    var ys = series.map(function(p){ return p[1]; });
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    if(yMin === yMax){ yMin -= 1; yMax += 1; }
+    var yPad = (yMax - yMin) * 0.12;
+    yMin -= yPad; yMax += yPad;
+    function X(x){ return padL + (x - xMin) / (xMax - xMin) * (W - padL - padR); }
+    function Y(y){ return padT + (1 - (y - yMin) / (yMax - yMin)) * (H - padT - padB); }
+    var pathD = series.map(function(p, i){ return (i===0 ? "M" : "L") + X(p[0]).toFixed(1) + "," + Y(p[1]).toFixed(1); }).join(" ");
+    var textColor = "var(--text-dim)";
+    var parts = [];
+    // gridlines + y labels (3 lines)
+    for(var g=0; g<=2; g++){
+      var gv = yMin + (yMax - yMin) * (g/2);
+      var gy = Y(gv);
+      parts.push('<line x1="'+padL+'" y1="'+gy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+gy.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>');
+      parts.push('<text x="4" y="'+(gy+4).toFixed(1)+'" font-size="10" fill="'+textColor+'" font-family="IBM Plex Mono, monospace">'+gv.toFixed(meta.decimals)+'</text>');
+    }
+    // x labels: start, mid, end (local time)
+    [0, Math.floor(series.length/2), series.length-1].forEach(function(idx){
+      var p = series[idx];
+      var lbl = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour:"2-digit", minute:"2-digit" }).format(new Date(p[0]));
+      var x = X(p[0]);
+      var anchor = idx===0 ? "start" : idx===series.length-1 ? "end" : "middle";
+      parts.push('<text x="'+x.toFixed(1)+'" y="'+(H-8)+'" font-size="10" fill="'+textColor+'" text-anchor="'+anchor+'" font-family="IBM Plex Mono, monospace">'+lbl+'</text>');
+    });
+    if(meta.area){
+      var areaD = pathD + " L" + X(series[series.length-1][0]).toFixed(1) + "," + Y(yMin).toFixed(1) + " L" + X(series[0][0]).toFixed(1) + "," + Y(yMin).toFixed(1) + " Z";
+      parts.push('<path d="'+areaD+'" fill="'+meta.color+'" opacity="0.18" stroke="none"/>');
+    }
+    parts.push('<path d="'+pathD+'" fill="none" stroke="'+meta.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+    // endpoint marker + value
+    var last = series[series.length-1];
+    parts.push('<circle cx="'+X(last[0]).toFixed(1)+'" cy="'+Y(last[1]).toFixed(1)+'" r="3.5" fill="'+meta.color+'"/>');
+    parts.push('<text x="'+(X(last[0])-6).toFixed(1)+'" y="'+(Y(last[1])-8).toFixed(1)+'" font-size="11" font-weight="600" fill="'+meta.color+'" text-anchor="end" font-family="IBM Plex Mono, monospace">'+last[1].toFixed(meta.decimals)+' '+meta.unit+'</text>');
+    svg.innerHTML = parts.join("");
+  }
+
+  document.getElementById("histTabs").addEventListener("click", function(e){
+    var btn = e.target.closest(".tab-btn"); if(!btn) return;
+    this.querySelectorAll(".tab-btn").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active");
+    histState.metric = btn.dataset.metric;
+    renderHistChart();
+  });
+
+  var histDot = document.getElementById("histDot");
+  var histStatusText = document.getElementById("histStatusText");
+  var histRefreshBtn = document.getElementById("histRefresh");
+  var histRefreshIcon = document.getElementById("histRefreshIcon");
+
+  function tryLiveHistRefresh(){
+    histRefreshBtn.disabled = true;
+    histRefreshIcon.classList.add("spin");
+    histDot.className = "dot";
+    histStatusText.textContent = "Trying pljusak.com directly…";
+    fetch("https://pljusak.com/meteo.php?stanica=sudigo")
+      .then(function(res){
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        return res.text();
+      })
+      .then(function(html){
+        function extract(varName){
+          var m = html.match(new RegExp("var " + varName + "\\s*=\\s*(\\[[\\s\\S]*?\\]);"));
+          return m ? JSON.parse(m[1]) : null;
+        }
+        var t = extract("temperature_24h"), p = extract("tlakovi_24h"), r = extract("oborine_24h");
+        if(!t || !p || !r) throw new Error("couldn't find station data in the page");
+        histData.t = t; histData.p = p; histData.r = r;
+        renderHistChart();
+        histDot.className = "dot";
+        histStatusText.textContent = "Live · updated " + new Date().toLocaleTimeString("en-GB", { timeZone: TZ });
+      })
+      .catch(function(err){
+        histDot.className = "dot stale";
+        histStatusText.textContent = "pljusak.com can't be reached from a page hosted elsewhere (" + err.message + ") — showing the 21:47 snapshot. Use the ↗ link for live charts.";
+      })
+      .finally(function(){
+        histRefreshBtn.disabled = false;
+        histRefreshIcon.classList.remove("spin");
+      });
+  }
+  histRefreshBtn.addEventListener("click", tryLiveHistRefresh);
+  renderHistChart();
+})();
+</script>
+</body>
+</html>
